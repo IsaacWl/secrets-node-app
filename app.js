@@ -1,4 +1,3 @@
-//jshint esversion:6
 const ejs = require("ejs")
 const express = require("express")
 const app = express()
@@ -24,14 +23,12 @@ app.use(passport.initialize())
 app.use(passport.session())
 
 const UserSchema = new mongoose.Schema({
-    email: {
+    username: {
         type: String,
         unique: true,
-        required: true
     },
     password: {
         type: String,
-        required: true
     }
 })
 
@@ -48,6 +45,14 @@ app.get("/", ( req, res ) => {
     res.render("home")
 })
 
+app.get("/secrets", ( req, res) => {
+    if (req.isAuthenticated()) {
+        res.render("secrets")
+    } else {
+        res.redirect("/login")
+    }
+})
+
 app.route("/register")
 
 .get((req, res) => {
@@ -55,53 +60,57 @@ app.route("/register")
 })
 
 .post((req, res) => {
-    const { username, password } = req.body
-    const saltRounds = 10
-    bcrypt.hash(password, saltRounds, (error, hash) => {
+    User.register({ username: req.body.username }, req.body.password, (error, user) => {
         if (error) {
-            return res.status(500).json({ error })
+            console.log(error)
+            res.redirect("/register")
+        } else {
+            passport.authenticate("local")(req, res, () => {
+                res.redirect("/secrets")
+            })
         }
-        const newUser = new User({
-            email: username,
-            password: hash
-        })
-        newUser.save((error) => {
-            if (error) {
-                return res.status(500).json({ error })
-            }
-            res.render("secrets")
-        })
     })
 })
 
 app.route("/login")
 
 .get((req, res) => {
-    res.render("login")
+    if (req.isAuthenticated()) {
+        res.redirect("/secrets")
+    } else {
+        res.render("login")
+    }
 })
 
 .post((req, res) => {
-    const { username, password } = req.body
-    User.findOne({ email: username }, (error, user) => {
+    const user = new User({
+        username: req.body.username,
+        password: req.body.password
+    })
+    req.login(user, (error) => {
         if (error) {
-            return res.status(500).json({ error })
+            console.log(error)
+        } else {
+            passport.authenticate("local")(req, res, () => {
+                res.redirect("/secrets")
+            })
         }
-        if (!user) {
-            return res.status(404).json({ message: "email not registered."})
+    })
+})
+
+app.get("/logout", (req, res) => {
+    req.logout((error) => {
+        if(error) {
+            console.log(error)
+        } else {
+            res.redirect("/")
         }
-        const passwordEquals = bcrypt.compare(password, user.password)
-        if (!passwordEquals) {
-            return res.status(400).json({ message: "email or password incorrect."})
-        }
-        res.render("secrets")
     })
 })
 
 
-
 const uri = "mongodb://localhost:27017/secrets"
 
-// mongoose.set("useCreateIndex", true)
 mongoose.connect(uri)
 .then(() => {
     app.listen(PORT, () => {
