@@ -69,9 +69,9 @@ passport.use(new GoogleStrategy({
         }
         if (!user) {
             const newUser = new User({
-                googleId: profile.id,
                 email: profile._json.email,
                 username: profile.displayName,
+                googleId: profile.id,
                 // picture: profile._json.picture
             })
             newUser.save((error) => {
@@ -113,9 +113,12 @@ app.get("/secrets", ( req, res) => {
 })
 
 app.route("/register")
-
 .get((req, res) => {
-    res.render("register")
+    if (req.isAuthenticated()) {
+        res.redirect("/secrets")
+    } else {
+        res.render("register")
+    }
 })
 
 .post( async (req, res) => {
