@@ -1,11 +1,10 @@
-
 body {
-  background-color: #E8ECEF;
+  background-color: #e8ecef;
 }
 
 .centered {
-    padding-top: 200px;
-    text-align: center;
+  padding-top: 200px;
+  text-align: center;
 }
 
 .secret-text {
@@ -15,8 +14,17 @@ body {
   background-color: #000;
 }
 
-
 .btn-google {
   background: #ee4b39;
   color: #fff;
+}
+
+.fa-google {
+  display: block;
+}
+
+@media (min-width: 48rem) {
+  .fa-google {
+    display: inline;
+  }
 }

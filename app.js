@@ -1,204 +1,159 @@
-require("dotenv").config()
-const express = require("express")
-const app = express()
-const PORT = process.env.PORT || 8000
-const mongoose = require("mongoose")
-const bcrypt = require("bcrypt")
-const passport = require("passport")
-const session = require("express-session")
-const GoogleStrategy = require("passport-google-oauth20").Strategy
-const LocalStrategy = require("passport-local")
-const User = require("./models/User")
+require('dotenv').config();
+const express = require('express');
+const app = express();
+const bcrypt = require('bcrypt');
+const passport = require('passport');
+const session = require('express-session');
+// database
+const startDatabase = require('./db/db');
+const User = require('./models/User');
 
-app.use(express.json())
-app.use(express.urlencoded({ extended: false }))
-app.use(express.static("public"))
-app.set("view engine", "ejs")
+const keys = require('./config/keys');
 
-app.use(session({
-    secret: process.env.SESSION_SECRET,
+const PORT = process.env.PORT || 8000;
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(express.static('public'));
+app.set('view engine', 'ejs');
+
+app.use(
+  session({
+    secret: keys.sessionSecret,
     resave: false,
-    saveUninitialized: false
-}))
+    saveUninitialized: false,
+  })
+);
 
-app.use(passport.initialize())
-app.use(passport.session())
+app.use(passport.initialize());
+app.use(passport.session());
 
-passport.serializeUser(( user, done ) => {
-    return done(null, user.id)
-})
+require('./services/passport');
 
-passport.deserializeUser((id, done ) => {
-    User.findById(id, (error, user) => {
-        if (error) return done(error)
-        const { password, ...userInfo } = user._doc
-        return done(null, userInfo)
-    })
-})
+app.get('/', (req, res) => {
+  res.render('home');
+});
 
-passport.use(new LocalStrategy((username, password, cb) => {
-    User.findOne({ email: username }, (error, user) => {
-        if (error) {
-            return cb(error)
-        }
-        if (!user) {
-            return cb(null, false, { message: "email or password incorrect."})
-        }
+app.get(
+  '/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
 
-        bcrypt.compare(password, user.password, (error, equals) => {
-            if (error) {
-                return cb(error)
-            }
-
-            if(!equals) {
-                return cb(null, false, { message: "email or password incorrect."})
-            }
-            return cb(null, user)
-        })
-    })
-}))
-
-passport.use(new GoogleStrategy({
-    clientID: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
-    callbackURL: "http://localhost:8000/auth/google/secrets",
-}, (accessToken, refreshToken, profile, cb) => {
-    User.findOne({ googleId: profile.id }, (error, user) => {
-        if (error) {
-            return console.error(error)
-        }
-        if (!user) {
-            const newUser = new User({
-                email: profile._json.email,
-                username: profile.displayName,
-                googleId: profile.id,
-                // picture: profile._json.picture
-            })
-            newUser.save((error) => {
-                if (error)
-                    return console.error(error)
-                
-                return cb(error, newUser)
-            })
-        } else {
-            return cb(error, user)
-        }
-    })
-}))
-
-app.get("/", ( req, res ) => {
-    res.render("home")
-})
-
-app.get("/auth/google",
-    passport.authenticate("google", { scope: ["profile", "email"] })
-)
-
-app.get("/auth/google/secrets",
-passport.authenticate("google", { failureRedirect: "/login" })
-, (req, res) => {
+app.get(
+  '/auth/google/secrets',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req, res) => {
     // if successful redirect to /secrets
-    res.redirect("/secrets")
-})
+    res.redirect('/secrets');
+  }
+);
 
-app.get("/secrets", ( req, res) => {
-    User.find({ "secret": {$ne: null}}, (error, foundUsers) => {
-        if (error) {
-            return res.status(500).json({ error })
-        }
-        res.render("secrets", {
-            userSecrets: foundUsers
-        })
-    })
-})
+app.get('/secrets', async (req, res) => {
+  try {
+    const users = await User.find({ secret: { $ne: null } });
+    res.render('secrets', {
+      userSecrets: users,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
 
-app.route("/register")
-.get((req, res) => {
+app
+  .route('/register')
+  .get((req, res) => {
     if (req.isAuthenticated()) {
-        res.redirect("/secrets")
-    } else {
-        res.render("register")
+      res.redirect('/secrets');
+      return;
     }
-})
+    res.render('register');
+  })
 
-.post( async (req, res) => {
-    const saltRounds = 10
-    let { password } = req.body
-    password = await bcrypt.hash(password, saltRounds)
+  .post(async (req, res) => {
+    const saltRounds = 10;
+    const { username, password } = req.body;
 
-    User.create({ email: req.body.username, password: password }, (error) => {
-        if (error) {
-            console.log(error)
-            res.redirect("/register")
-        } else {
-            passport.authenticate("local")(req, res, () => {
-                res.redirect("/secrets")
-            })
-        }
-    })
-})
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-app.route("/login")
+    const user = { email: username, password: hashedPassword };
 
-.get((req, res) => {
+    try {
+      const newUser = await User.create(user);
+      await newUser.save();
+      passport.authenticate('local')(req, res, () => {
+        res.redirect('/secrets');
+      });
+    } catch (error) {
+      console.log(error);
+      res.redirect('/register');
+    }
+  });
+
+app
+  .route('/login')
+
+  .get((req, res) => {
+    console.log(req.isAuthenticated());
     if (req.isAuthenticated()) {
-        res.redirect("/secrets")
-    } else {
-        res.render("login")
+      res.redirect('/secrets');
+      return;
     }
-})
+    res.render('login');
+  })
 
-.post(
-    passport.authenticate("local",
-    { failureRedirect: "/login", failureMessage: true}),
-    ( req, res ) => {
-    res.redirect("/secrets")
-})
+  .post(
+    passport.authenticate('local', {
+      failureRedirect: '/login',
+      failureMessage: true,
+    }),
+    (req, res) => {
+      res.redirect('/secrets');
+    }
+  );
 
-app.route("/submit")
- 
-.get( (req, res)  => {
+app
+  .route('/submit')
+
+  .get((req, res) => {
     if (req.isAuthenticated()) {
-        res.render("submit")
-    } else {
-        res.redirect("/login")
+      res.render('submit');
+      return;
     }
-})
+    res.redirect('/login');
+  })
 
-.post(( req, res ) => {
-    const userId = req.user._id
-    const { secret } = req.body
-    User.findById(userId, (error, user) => {
-        if (error) {
-            return res.status(500).json({ error })
-        }
-        if (!user) {
-            return res.status(404).json({ message: `user of id: ${userId} not found.`})
-        }
-        user.secret = secret
-        user.save((error) => {
-            if (error) {
-                return res.status(500).json({ error })
-            }
-            res.redirect("/secrets")
-        })
-    })
-})
+  .post(async (req, res) => {
+    const userId = req.user?._id;
+    const { secret } = req.body;
 
-app.get("/logout", (req, res) => {
-    req.logout((error) => {
-        if(error) {
-            console.log(error)
-        } else {
-            res.redirect("/")
-        }
-    })
-})
+    try {
+      const user = await User.findById(userId);
 
-mongoose.connect(process.env.MONGO_URI)
-.then(() => {
-    app.listen(PORT, () => {
-        console.log(`Listening port ${PORT}`)
-    })
-})
-.catch(error => console.error(error))
+      if (!user)
+        return res
+          .status(404)
+          .json({ message: `not user with the id: ${userId}` });
+
+      user.secret = secret;
+
+      await user.save();
+
+      return res.redirect('/secrets');
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+app.get('/logout', (req, res) => {
+  req.logout((error) => {
+    if (error) {
+      console.log(error);
+    }
+    res.redirect('/');
+  });
+});
+
+(async () => {
+  await startDatabase();
+  app.listen(PORT, console.log(`Listening on port: ${PORT}`));
+})();
