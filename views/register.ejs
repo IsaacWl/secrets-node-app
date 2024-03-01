@@ -1,14 +1,15 @@
 <%- include('partials/header') %>
 <div class="container mt-5">
-  <h1>Register</h1>
 
   <div class="row">
-    <div class="col-sm-8">
+    <div class="col-sm-10 col-lg-6">
       <div class="card">
         <div class="card-body">
 
           <!-- Makes POST request to /register route -->
           <form action="/register" method="POST">
+            <h2>Register</h2>
+            <hr /> 
             <div class="form-group">
               <label for="email">Email</label>
               <input type="email" class="form-control" name="username">
@@ -24,7 +25,7 @@
       </div>
     </div>
 
-    <div class="col-sm-4">
+    <div class="my-1 col-lg-4 col-sm-10">
       <div class="card social-block">
         <div class="card-body">
           <a class="btn btn-block btn-google" href="/auth/google" role="button">
